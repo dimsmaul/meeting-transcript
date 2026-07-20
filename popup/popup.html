@@ -6,7 +6,7 @@
     <style>
       :root { color-scheme: light dark; }
       body {
-        width: 260px;
+        width: 300px;
         margin: 0;
         padding: 14px;
         font: 13px/1.4 system-ui, sans-serif;
@@ -25,12 +25,24 @@
       }
       button:hover { background: color-mix(in srgb, currentColor 8%, transparent); }
       button:disabled { opacity: 0.4; cursor: default; }
-      #status {
+      .exports button { font-size: 12px; padding: 5px 6px; }
+      #status { font-size: 12px; opacity: 0.7; margin: 6px 0; }
+      #status.warn { color: #d93025; opacity: 1; }
+      #preview {
+        height: 150px;
+        overflow-y: auto;
+        border: 1px solid color-mix(in srgb, currentColor 15%, transparent);
+        border-radius: 6px;
+        padding: 6px 8px;
         font-size: 12px;
-        opacity: 0.7;
-        margin-top: 6px;
       }
-      #status.warn { color: #d97706; opacity: 1; }
+      #preview:empty::before {
+        content: 'No lines yet';
+        opacity: 0.4;
+      }
+      .line { margin-bottom: 4px; }
+      .line .spk { font-weight: 600; }
+      .line .ts { opacity: 0.5; font-size: 11px; }
     </style>
   </head>
   <body>
@@ -39,11 +51,14 @@
       <button id="start">Start</button>
       <button id="stop">Stop</button>
     </div>
-    <div class="row">
-      <button id="export">Export JSON</button>
+    <div class="row exports">
+      <button id="export-json">JSON</button>
+      <button id="export-txt">TXT</button>
+      <button id="export-md">MD</button>
       <button id="reset">Reset</button>
     </div>
     <div id="status">Idle</div>
+    <div id="preview"></div>
     <script src="popup.js"></script>
   </body>
 </html>

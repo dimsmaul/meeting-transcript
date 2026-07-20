@@ -10,6 +10,20 @@ const ready = (async () => {
   if (live_transcript) manager.load_from_json(live_transcript);
 })();
 
+// Live-session health, reflected on the toolbar badge. Note: this state is
+// in-memory and resets on an MV3 idle-kill; the badge itself persists.
+let health = 'idle'; // 'idle' | 'waiting' | 'ok' | 'stale'
+
+function setHealth(state) {
+  health = state;
+  if (state === 'stale') {
+    chrome.action.setBadgeText({ text: '!' });
+    chrome.action.setBadgeBackgroundColor({ color: '#d93025' });
+  } else {
+    chrome.action.setBadgeText({ text: '' });
+  }
+}
+
 async function getMeetTab() {
   const [tab] = await chrome.tabs.query({
     active: true,
@@ -36,6 +50,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             return;
           }
         }
+        setHealth(message.type === 'START_TRANSCRIPTION' && tab ? 'waiting' : 'idle');
         sendResponse({ ok: !!tab, error: tab ? undefined : 'no_meet_tab' });
         break;
       }
@@ -43,6 +58,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       case 'CAPTION_LINE': {
         manager.add_line(message.ts, message.speaker, message.text);
         await chrome.storage.local.set({ live_transcript: manager.get_all_json() });
+        if (health !== 'ok') setHealth('ok');
+        break;
+      }
+
+      case 'HEALTH': {
+        setHealth(message.state); // 'stale' | 'ok' from the content script
         break;
       }
 
@@ -57,13 +78,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       }
 
       case 'STATUS': {
-        sendResponse({ count: manager.len() });
+        sendResponse({ count: manager.len(), health });
         break;
       }
 
       case 'RESET': {
         manager.reset();
         await chrome.storage.local.remove('live_transcript');
+        setHealth('idle');
         sendResponse({ ok: true });
         break;
       }

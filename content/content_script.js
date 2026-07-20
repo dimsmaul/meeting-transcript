@@ -16,6 +16,15 @@ const SELECTORS = {
 
 let observing = false;
 
+// Health-check: if we are observing but no caption has been captured for a
+// while, the selectors are likely stale (Meet DOM changed) or captions (CC)
+// are off. See PRD R1 / FEASIBILITY R1.
+const STALE_AFTER_MS = 60_000;
+const HEALTH_TICK_MS = 15_000;
+let lastCaptionAt = 0;
+let healthTimer = null;
+let reportedStale = false;
+
 // (a) Scraper for Meet's built-in captions.
 const captionObserver = new MutationObserver(() => {
   const region = document.querySelector(SELECTORS.captionRegion);
@@ -24,6 +33,11 @@ const captionObserver = new MutationObserver(() => {
     const speaker = row.querySelector(SELECTORS.captionSpeaker)?.textContent?.trim() ?? '';
     const text = row.querySelector(SELECTORS.captionText)?.textContent?.trim() ?? '';
     if (!text) return;
+    lastCaptionAt = Date.now();
+    if (reportedStale) {
+      reportedStale = false;
+      chrome.runtime.sendMessage({ type: 'HEALTH', state: 'ok' });
+    }
     chrome.runtime.sendMessage({
       type: 'CAPTION_LINE',
       speaker,
@@ -49,6 +63,8 @@ const speakingObserver = new MutationObserver(() => {
 function startObserving() {
   if (observing) return;
   observing = true;
+  lastCaptionAt = Date.now();
+  reportedStale = false;
   captionObserver.observe(document.body, {
     childList: true,
     subtree: true,
@@ -59,6 +75,13 @@ function startObserving() {
     attributes: true,
     attributeFilter: ['data-is-speaking'],
   });
+  healthTimer = setInterval(() => {
+    if (!observing || reportedStale) return;
+    if (Date.now() - lastCaptionAt > STALE_AFTER_MS) {
+      reportedStale = true;
+      chrome.runtime.sendMessage({ type: 'HEALTH', state: 'stale' });
+    }
+  }, HEALTH_TICK_MS);
 }
 
 function stopObserving() {
@@ -66,6 +89,10 @@ function stopObserving() {
   observing = false;
   captionObserver.disconnect();
   speakingObserver.disconnect();
+  if (healthTimer) {
+    clearInterval(healthTimer);
+    healthTimer = null;
+  }
 }
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
