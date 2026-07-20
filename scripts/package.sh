@@ -13,6 +13,15 @@ cd "$ROOT"
 # Files/dirs included in every package (besides the generated manifest).
 ASSETS=(pkg background content popup)
 
+# manifest.version must be 1–4 dot-separated integers — browsers reject SemVer
+# prerelease strings like "0.2.0-beta.1". Map beta → a numeric 4th component so
+# the package still loads (0.2.0-beta.3 → 0.2.0.3). Zip name keeps the full tag.
+if [[ "$VERSION" =~ ^([0-9]+\.[0-9]+\.[0-9]+)-beta\.([0-9]+)$ ]]; then
+  MANIFEST_VERSION="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}"
+else
+  MANIFEST_VERSION="$VERSION"
+fi
+
 echo "==> wasm-pack build"
 wasm-pack build --target web --out-dir pkg --release
 
@@ -29,7 +38,7 @@ assemble() {
   if [[ "$target" == "firefox" ]]; then
     # Firefox MV3 does NOT support background.service_worker (chromium-only).
     # Convert to an event-page background.scripts (module) + add a gecko id.
-    jq --arg v "$VERSION" '
+    jq --arg v "$MANIFEST_VERSION" '
       .version = $v
       | .background = { "scripts": ["background/service_worker.js"], "type": "module" }
       | .browser_specific_settings = {
@@ -41,7 +50,7 @@ assemble() {
     ' manifest.json > "$out/manifest.json"
   else
     # Chromium (Chrome/Edge/Opera/Brave): use the manifest as-is + version.
-    jq --arg v "$VERSION" '.version = $v' manifest.json > "$out/manifest.json"
+    jq --arg v "$MANIFEST_VERSION" '.version = $v' manifest.json > "$out/manifest.json"
   fi
 
   ( cd "$out" && zip -qr "../meet-transcriber-$target-$VERSION.zip" . )

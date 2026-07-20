@@ -1,8 +1,10 @@
 name: Release
 
-# Automatic versioning from commit messages (conventional commits).
-# Push to main → determine bump from commits since the last tag → tag + build + publish.
-# No manual tagging. Non-release commits (chore/docs/refactor/ci/test) → skip.
+# Automatic versioning from commit messages (Conventional Commits).
+# Push to main → determine bump + channel from commits since the last stable tag.
+#   stable  (feat:/fix:/perf:)          → build + GitHub Release + publish to stores
+#   beta    ((beta) scope, e.g. feat(beta):) → build + GitHub PRE-release only, no stores
+# Non-release commits (chore/docs/refactor/ci/test) → skip. No manual tagging.
 on:
   push:
     branches: [main]
@@ -15,30 +17,23 @@ jobs:
   version:
     runs-on: ubuntu-latest
     outputs:
-      version: ${{ steps.tag.outputs.new_version }}
-      tag: ${{ steps.tag.outputs.new_tag }}
-      changed: ${{ steps.tag.outputs.release_type }}
+      release: ${{ steps.ver.outputs.release }}
+      version: ${{ steps.ver.outputs.version }}
+      tag: ${{ steps.ver.outputs.tag }}
+      channel: ${{ steps.ver.outputs.channel }}
+      prerelease: ${{ steps.ver.outputs.prerelease }}
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # full history needed to read commits since the last tag
+          fetch-depth: 0 # full history + tags needed to compute the next version
 
-      - name: Determine version bump from commits
-        id: tag
-        uses: mathieudutour/github-tag-action@v6.2
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          default_bump: false # no release commit → no bump, no tag
-          release_branches: main
-          # Prefix → bump mapping. Edit here to change the policy.
-          custom_release_rules: >-
-            feat:minor,
-            fix:patch,
-            perf:patch
+      - name: Compute next version & channel
+        id: ver
+        run: scripts/next-version.sh >> "$GITHUB_OUTPUT"
 
   build:
     needs: version
-    if: needs.version.outputs.version != ''
+    if: needs.version.outputs.release == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -47,7 +42,7 @@ jobs:
         env:
           VERSION: ${{ needs.version.outputs.version }}
         run: |
-          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-beta\.[0-9]+)?$ ]]; then
             echo "::error::Computed version '$VERSION' is invalid."
             exit 1
           fi
@@ -73,13 +68,16 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.version.outputs.tag }}
+          prerelease: ${{ needs.version.outputs.prerelease == 'true' }}
           files: dist/*.zip
           generate_release_notes: true
 
-  # --- Publish jobs: each skips itself when its main secret is empty ---
+  # --- Publish jobs: STABLE channel only (beta stays GitHub-prerelease-only).
+  #     Each also skips itself when its main secret is empty. ---
 
   publish-chrome:
     needs: [version, build]
+    if: needs.version.outputs.channel == 'stable'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -106,6 +104,7 @@ jobs:
 
   publish-edge:
     needs: [version, build]
+    if: needs.version.outputs.channel == 'stable'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -135,6 +134,7 @@ jobs:
 
   publish-firefox:
     needs: [version, build]
+    if: needs.version.outputs.channel == 'stable'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4

@@ -6,17 +6,37 @@ Automatic publishing to extension stores via GitHub Actions. Trigger = **push to
 
 On every push to `main`, the workflow reads the commits since the last tag (conventional commits), computes the new version, creates a tag + GitHub Release, then builds & publishes — all in a single run.
 
-| Commit prefix | Bump | Example |
-|---|---|---|
-| `fix:` / `perf:` | **patch** | `0.1.0` → `0.1.1` |
-| `feat:` | **minor** | `0.1.0` → `0.2.0` |
-| `feat!:` / `fix!:` / body contains `BREAKING CHANGE:` | **major** | `0.1.0` → `1.0.0` |
-| `chore:` `docs:` `refactor:` `ci:` `test:` / others | **no release** | version does not bump, workflow skips |
+| Commit prefix | Bump | Channel | Example |
+|---|---|---|---|
+| `fix:` / `perf:` | **patch** | stable | `0.1.0` → `0.1.1` |
+| `feat:` | **minor** | stable | `0.1.0` → `0.2.0` |
+| `feat!:` / `fix!:` / body contains `BREAKING CHANGE:` | **major** | stable | `0.1.0` → `1.0.0` |
+| `fix(beta):` / `perf(beta):` | patch | **beta** | `0.1.0` → `0.1.1-beta.1` |
+| `feat(beta):` | minor | **beta** | `0.1.0` → `0.2.0-beta.1` |
+| `feat(beta)!:` | major | **beta** | `0.1.0` → `1.0.0-beta.1` |
+| `chore:` `docs:` `refactor:` `ci:` `test:` / others | **no release** | — | version does not bump, workflow skips |
 
-- **The mapping is editable** in `release.yml` → job `version` → the `custom_release_rules` input.
+- **The version logic lives in `scripts/next-version.sh`** (not the workflow) — testable locally: `bash scripts/next-version.sh`.
 - **No "bump version" commit.** `manifest.json` in the repo stays `0.1.0`; the real version is injected at build time (`scripts/package.sh`).
 - If one push contains multiple commits, the highest bump wins (a `feat:` + `fix:` → minor).
 - Emergency release with no releasing commit: **Actions → Release → Run workflow** (`workflow_dispatch`).
+
+### Beta / prerelease channel
+
+Mark a commit with the **`(beta)` scope** to cut a prerelease instead of a stable release. The commit type still sets the bump level; the scope only changes the channel.
+
+```bash
+git commit -m "feat(beta): experimental markdown export"
+git push origin main
+# → v0.2.0-beta.1, GitHub PRE-release, stores NOT touched
+git push origin main   # another fix(beta): ...
+# → v0.2.0-beta.2
+```
+
+- **Beta publishes to a GitHub *pre-release* only** — no Chrome/Edge/Firefox store submission (the `publish-*` jobs are gated to `channel == 'stable'`). Testers download the zip and load it unpacked.
+- **Beta number auto-increments** (`beta.1`, `beta.2`, …) against the same target base version.
+- **Promotion**: if a batch pushed to `main` contains **any** non-`(beta)` releasing commit, the whole release promotes to **stable** (e.g. `feat(beta):` + `fix:` → `0.2.0` stable). To keep it beta, keep every releasing commit `(beta)`-scoped.
+- **Manifest version**: browsers reject SemVer prerelease strings, so a beta build writes a numeric `manifest.version` (`0.2.0-beta.3` → `0.2.0.3`) while the zip name and git tag keep the full `-beta.N`.
 
 ### How to release
 

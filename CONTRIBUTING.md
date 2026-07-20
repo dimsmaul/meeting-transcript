@@ -33,10 +33,11 @@ Versioning and publishing are **fully automated from commit messages**. The pref
 
 | Prefix | Effect | When |
 |---|---|---|
-| `fix:` | patch release | bug fix |
-| `perf:` | patch release | performance improvement |
-| `feat:` | minor release | new user-facing capability |
-| `feat!:` / `fix!:` or `BREAKING CHANGE:` in body | major release | incompatible change |
+| `fix:` | patch release (stable) | bug fix |
+| `perf:` | patch release (stable) | performance improvement |
+| `feat:` | minor release (stable) | new user-facing capability |
+| `feat!:` / `fix!:` or `BREAKING CHANGE:` in body | major release (stable) | incompatible change |
+| `feat(beta):` / `fix(beta):` / `perf(beta):` | prerelease (beta channel) | ship to testers first, GitHub pre-release only |
 | `chore:` `docs:` `refactor:` `ci:` `test:` `style:` | no release | internal / non-product |
 
 Examples:
@@ -46,7 +47,10 @@ fix: replace duplicated caption line on partial update
 feat: add markdown export from the popup
 docs: clarify Phase 3 audio pipeline caveats
 feat!: change exported JSON schema to nested segments
+feat(beta): experimental Whisper fallback (testers only)
 ```
+
+**Beta channel**: the `(beta)` scope produces `X.Y.Z-beta.N` as a GitHub pre-release and does **not** submit to any store. A batch that mixes a plain `feat:`/`fix:` with `(beta)` commits promotes to a stable release. Full rules: [RELEASE.md](RELEASE.md#beta--prerelease-channel).
 
 Keep the subject imperative and ≤ ~72 chars. Add a body only when the "why" isn't obvious. Full policy: [RELEASE.md](RELEASE.md).
 
