@@ -1,0 +1,55 @@
+name: Bug report
+description: Something isn't working
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. If the transcript suddenly stopped capturing, it is
+        most likely a Meet DOM change — please note which selectors you checked.
+  - type: input
+    id: version
+    attributes:
+      label: Extension version
+      placeholder: e.g. 0.1.1
+    validations:
+      required: true
+  - type: dropdown
+    id: browser
+    attributes:
+      label: Browser
+      options: [Chrome, Brave, Edge, Firefox, Other]
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open Google Meet, turn on captions
+        2. Click Start
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: console
+    attributes:
+      label: Console / service worker logs
+      description: From chrome://extensions → Inspect views → service worker, and the Meet tab console.
+      render: shell
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: Captions (CC) were turned on in Meet
+          required: false
+        - label: I rebuilt the WASM (`wasm-pack build`) and reloaded the extension
+          required: false

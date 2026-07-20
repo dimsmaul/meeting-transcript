@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      :root { color-scheme: light dark; }
+      body {
+        width: 260px;
+        margin: 0;
+        padding: 14px;
+        font: 13px/1.4 system-ui, sans-serif;
+      }
+      h1 { font-size: 14px; margin: 0 0 10px; }
+      .row { display: flex; gap: 6px; margin-bottom: 8px; }
+      button {
+        flex: 1;
+        padding: 7px 10px;
+        border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+        border-radius: 6px;
+        background: transparent;
+        color: inherit;
+        cursor: pointer;
+        font: inherit;
+      }
+      button:hover { background: color-mix(in srgb, currentColor 8%, transparent); }
+      button:disabled { opacity: 0.4; cursor: default; }
+      #status {
+        font-size: 12px;
+        opacity: 0.7;
+        margin-top: 6px;
+      }
+      #status.warn { color: #d97706; opacity: 1; }
+    </style>
+  </head>
+  <body>
+    <h1>Meet Transcriber</h1>
+    <div class="row">
+      <button id="start">Start</button>
+      <button id="stop">Stop</button>
+    </div>
+    <div class="row">
+      <button id="export">Export JSON</button>
+      <button id="reset">Reset</button>
+    </div>
+    <div id="status">Idle</div>
+    <script src="popup.js"></script>
+  </body>
+</html>

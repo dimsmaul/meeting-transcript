@@ -1,0 +1,156 @@
+name: Release
+
+# Automatic versioning from commit messages (conventional commits).
+# Push to main → determine bump from commits since the last tag → tag + build + publish.
+# No manual tagging. Non-release commits (chore/docs/refactor/ci/test) → skip.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: # emergency button: manual release from the Actions UI
+
+permissions:
+  contents: write # create tags + GitHub Releases
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.tag.outputs.new_version }}
+      tag: ${{ steps.tag.outputs.new_tag }}
+      changed: ${{ steps.tag.outputs.release_type }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history needed to read commits since the last tag
+
+      - name: Determine version bump from commits
+        id: tag
+        uses: mathieudutour/github-tag-action@v6.2
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          default_bump: false # no release commit → no bump, no tag
+          release_branches: main
+          # Prefix → bump mapping. Edit here to change the policy.
+          custom_release_rules: >-
+            feat:minor,
+            fix:patch,
+            perf:patch
+
+  build:
+    needs: version
+    if: needs.version.outputs.version != ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate computed version
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Computed version '$VERSION' is invalid."
+            exit 1
+          fi
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+      - uses: jetli/wasm-pack-action@v0.4.0
+
+      - name: Package all targets
+        run: scripts/package.sh "${{ needs.version.outputs.version }}" all
+
+      - name: Upload zips as artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-zips
+          path: dist/*.zip
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.version.outputs.tag }}
+          files: dist/*.zip
+          generate_release_notes: true
+
+  # --- Publish jobs: each skips itself when its main secret is empty ---
+
+  publish-chrome:
+    needs: [version, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { name: release-zips, path: dist }
+      - name: Publish to Chrome Web Store
+        env:
+          CLIENT_ID: ${{ secrets.CHROME_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.CHROME_CLIENT_SECRET }}
+          REFRESH_TOKEN: ${{ secrets.CHROME_REFRESH_TOKEN }}
+          APP_ID: ${{ secrets.CHROME_APP_ID }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          if [[ -z "$APP_ID" ]]; then
+            echo "::notice::CHROME_APP_ID is empty — skipping Chrome publish."
+            exit 0
+          fi
+          npx --yes chrome-webstore-upload-cli@3 upload \
+            --source "dist/meet-transcriber-chromium-$VERSION.zip" \
+            --extension-id "$APP_ID" \
+            --client-id "$CLIENT_ID" \
+            --client-secret "$CLIENT_SECRET" \
+            --refresh-token "$REFRESH_TOKEN" \
+            --auto-publish
+
+  publish-edge:
+    needs: [version, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { name: release-zips, path: dist }
+      - name: Publish to Edge Add-ons
+        env:
+          PRODUCT_ID: ${{ secrets.EDGE_PRODUCT_ID }}
+          CLIENT_ID: ${{ secrets.EDGE_CLIENT_ID }}
+          API_KEY: ${{ secrets.EDGE_API_KEY }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          if [[ -z "$PRODUCT_ID" ]]; then
+            echo "::notice::EDGE_PRODUCT_ID is empty — skipping Edge publish."
+            exit 0
+          fi
+          ZIP="dist/meet-transcriber-chromium-$VERSION.zip"
+          curl -sS -X POST \
+            "https://api.addons.microsoftedge.microsoft.com/v1/products/$PRODUCT_ID/submissions/draft/package" \
+            -H "Authorization: ApiKey $API_KEY" \
+            -H "X-ClientID: $CLIENT_ID" \
+            -H "Content-Type: application/zip" \
+            --data-binary "@$ZIP"
+          curl -sS -X POST \
+            "https://api.addons.microsoftedge.microsoft.com/v1/products/$PRODUCT_ID/submissions" \
+            -H "Authorization: ApiKey $API_KEY" \
+            -H "X-ClientID: $CLIENT_ID"
+
+  publish-firefox:
+    needs: [version, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { name: release-zips, path: dist }
+      - name: Publish to Firefox Add-ons (AMO)
+        env:
+          AMO_JWT_ISSUER: ${{ secrets.AMO_JWT_ISSUER }}
+          AMO_JWT_SECRET: ${{ secrets.AMO_JWT_SECRET }}
+        run: |
+          if [[ -z "$AMO_JWT_ISSUER" ]]; then
+            echo "::notice::AMO_JWT_ISSUER is empty — skipping Firefox publish."
+            exit 0
+          fi
+          npx --yes web-ext@latest sign \
+            --channel listed \
+            --source-dir dist/firefox \
+            --api-key "$AMO_JWT_ISSUER" \
+            --api-secret "$AMO_JWT_SECRET" \
+          || echo "::warning::Firefox sign failed — check the AMO review requirement."

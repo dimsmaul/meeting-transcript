@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "Meet Live Transcriber (Rust)",
+  "version": "0.1.0",
+  "description": "Real-time Google Meet transcription with speaker names via caption scraping. Rust/WASM state engine.",
+  "permissions": ["activeTab", "storage", "tabs"],
+  "host_permissions": ["https://meet.google.com/*"],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
+  },
+  "background": {
+    "service_worker": "background/service_worker.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://meet.google.com/*"],
+      "js": ["content/content_script.js"]
+    }
+  ],
+  "action": {
+    "default_popup": "popup/popup.html"
+  }
+}
