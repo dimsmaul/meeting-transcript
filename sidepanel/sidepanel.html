@@ -4,75 +4,204 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <style>
-      :root { color-scheme: light dark; }
+      :root {
+        color-scheme: light dark;
+        --teal: #0d9488;
+        --teal-hi: #14b8a6;
+        --coral: #fb7185;
+        --bg: #ffffff;
+        --surface: #f8fafc;
+        --surface-2: #f1f5f9;
+        --border: #e2e8f0;
+        --text: #0f172a;
+        --muted: #64748b;
+        --danger: #e11d48;
+        --radius: 10px;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --teal: #2dd4bf;
+          --teal-hi: #5eead4;
+          --coral: #fb7185;
+          --bg: #0b1120;
+          --surface: #131c2e;
+          --surface-2: #1c2740;
+          --border: #263248;
+          --text: #e8edf6;
+          --muted: #93a1b8;
+          --danger: #fb7185;
+        }
+      }
+
+      * { box-sizing: border-box; }
       html, body { height: 100%; }
       body {
         margin: 0;
-        padding: 12px;
-        box-sizing: border-box;
+        padding: 14px 14px 12px;
         display: flex;
         flex-direction: column;
-        gap: 8px;
-        font: 13px/1.4 system-ui, sans-serif;
+        gap: 12px;
+        font: 13px/1.5 system-ui, -apple-system, sans-serif;
+        color: var(--text);
+        background: var(--bg);
       }
-      header { display: flex; align-items: center; gap: 8px; }
-      header img { width: 24px; height: 24px; }
-      header h1 { font-size: 15px; margin: 0; }
-      .row { display: flex; gap: 6px; }
-      button {
-        flex: 1;
-        padding: 7px 10px;
-        border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
-        border-radius: 6px;
-        background: transparent;
-        color: inherit;
-        cursor: pointer;
-        font: inherit;
+
+      /* Header */
+      header { display: flex; align-items: center; gap: 10px; }
+      header img { width: 28px; height: 28px; border-radius: 7px; }
+      .brand { font-size: 16px; font-weight: 700; letter-spacing: -0.02em; }
+      .rec-dot {
+        margin-left: auto;
+        display: inline-flex; align-items: center; gap: 6px;
+        font-size: 11px; font-weight: 600; color: var(--muted);
       }
-      button:hover { background: color-mix(in srgb, currentColor 8%, transparent); }
-      .exports button { font-size: 12px; padding: 5px 6px; }
-      details summary { font-size: 11px; opacity: 0.6; cursor: pointer; }
-      #status { font-size: 12px; opacity: 0.7; }
-      #status.warn { color: #d93025; opacity: 1; }
+      .rec-dot::before {
+        content: ''; width: 8px; height: 8px; border-radius: 50%;
+        background: var(--muted);
+      }
+      body[data-rec='on'] .rec-dot { color: var(--danger); }
+      body[data-rec='on'] .rec-dot::before {
+        background: var(--danger); animation: pulse 1.4s ease-in-out infinite;
+      }
+      @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+      /* Primary toggle */
+      .toggle {
+        width: 100%; padding: 11px; border: none; border-radius: var(--radius);
+        font: 600 14px system-ui; color: #fff; background: var(--teal);
+        cursor: pointer; transition: background 0.15s, transform 0.05s;
+      }
+      .toggle:hover { background: var(--teal-hi); }
+      .toggle:active { transform: translateY(1px); }
+      body[data-rec='on'] .toggle { background: var(--danger); }
+      body[data-rec='on'] .toggle:hover { filter: brightness(1.08); }
+
+      /* Secondary rows */
+      .seg {
+        display: flex; gap: 0; border: 1px solid var(--border);
+        border-radius: var(--radius); overflow: hidden; background: var(--surface);
+      }
+      .seg button {
+        flex: 1; padding: 8px 4px; border: none; background: transparent;
+        color: var(--text); font: 500 12px system-ui; cursor: pointer;
+        border-right: 1px solid var(--border);
+      }
+      .seg button:last-child { border-right: none; }
+      .seg button:hover { background: var(--surface-2); }
+      .seg .danger { color: var(--danger); }
+
+      .label { font-size: 11px; font-weight: 600; color: var(--muted);
+        text-transform: uppercase; letter-spacing: 0.04em; }
+
+      /* Status pill */
+      #status {
+        font-size: 12px; color: var(--muted); padding: 6px 10px;
+        background: var(--surface); border-radius: 8px; border: 1px solid var(--border);
+      }
+      #status.warn { color: var(--danger); border-color: var(--danger);
+        background: color-mix(in srgb, var(--danger) 10%, transparent); }
+
+      /* Transcript */
+      .transcript-head { display: flex; align-items: center; justify-content: space-between; }
+      #count { font-size: 11px; color: var(--muted); }
       #preview {
-        flex: 1;
-        min-height: 120px;
-        overflow-y: auto;
-        border: 1px solid color-mix(in srgb, currentColor 15%, transparent);
-        border-radius: 6px;
-        padding: 6px 8px;
-        font-size: 12px;
+        flex: 1; min-height: 140px; overflow-y: auto; padding: 4px 2px;
+        display: flex; flex-direction: column; gap: 8px;
       }
-      #preview:empty::before { content: 'No lines yet'; opacity: 0.4; }
-      .line { margin-bottom: 5px; }
-      .line .spk { font-weight: 600; }
-      .line .ts { opacity: 0.5; font-size: 11px; }
+      #preview.empty {
+        align-items: center; justify-content: center; text-align: center;
+      }
+      .empty-state { color: var(--muted); font-size: 12px; max-width: 200px; }
+      .empty-state .big { font-size: 26px; display: block; margin-bottom: 6px; opacity: 0.7; }
+
+      .line { display: flex; flex-direction: column; gap: 1px; }
+      .line .head { display: flex; align-items: baseline; gap: 6px; }
+      .line .spk { font-weight: 700; font-size: 12px; }
+      .line .ts { font-size: 10px; color: var(--muted); }
+      .line .txt {
+        background: var(--surface); border: 1px solid var(--border);
+        border-radius: 8px; padding: 6px 9px; font-size: 12.5px;
+      }
+
+      /* Experimental disclosure */
+      details summary {
+        font-size: 11px; color: var(--muted); cursor: pointer; list-style: none;
+      }
+      details summary::-webkit-details-marker { display: none; }
+      details summary::before { content: '⚙ '; }
+      .hint { font-size: 11px; color: var(--muted); margin-top: 6px; line-height: 1.4; }
+
+      /* Language picker — in the main flow, not behind Settings: leaving it on
+         auto-detect makes Whisper translate non-English audio into English. */
+      .lang-row { display: flex; align-items: center; gap: 8px; }
+      .lang-row select {
+        flex: 1; padding: 6px 8px; border-radius: 8px;
+        border: 1px solid var(--border); background: var(--surface);
+        color: var(--text); font: 12px system-ui;
+      }
     </style>
   </head>
-  <body>
+  <body data-rec="off">
     <header>
       <img src="../assets/Speaky-128.png" alt="" />
-      <h1>Speaky</h1>
+      <span class="brand">Speaky</span>
+      <span class="rec-dot" id="rec">Idle</span>
     </header>
-    <div class="row">
-      <button id="start">Start</button>
-      <button id="stop">Stop</button>
+
+    <div id="armed" class="label" style="text-transform: none; letter-spacing: 0;"></div>
+
+    <div class="lang-row">
+      <label class="label" for="lang">Spoken language</label>
+      <select id="lang">
+        <option value="">Auto-detect (may translate to English)</option>
+        <option value="id">Indonesian</option>
+        <option value="en">English</option>
+        <option value="ja">Japanese</option>
+        <option value="zh">Chinese</option>
+        <option value="ko">Korean</option>
+        <option value="es">Spanish</option>
+        <option value="ar">Arabic</option>
+        <option value="ms">Malay</option>
+      </select>
     </div>
-    <div class="row exports">
-      <button id="export-json">JSON</button>
-      <button id="export-txt">TXT</button>
-      <button id="export-md">MD</button>
-      <button id="reset">Reset</button>
+
+    <button id="toggle" class="toggle">Start capturing</button>
+
+    <div id="status">Click the Speaky icon on a tab to arm it, then Start.</div>
+
+    <div class="transcript-head">
+      <span class="label">Transcript</span>
+      <span id="count"></span>
     </div>
-    <details>
-      <summary>Experimental: audio STT (no captions)</summary>
-      <div class="row" style="margin-top: 6px;">
-        <button id="audio-start">Start Audio</button>
-        <button id="audio-stop">Stop Audio</button>
+    <div id="preview" class="empty"></div>
+
+    <div>
+      <div class="label" style="margin-bottom: 6px;">Audio</div>
+      <div class="seg">
+        <button id="download-audio">⬇ Download audio (.webm)</button>
       </div>
+    </div>
+
+    <div>
+      <div class="label" style="margin-bottom: 6px;">Export</div>
+      <div class="seg">
+        <button id="export-json">JSON</button>
+        <button id="export-txt">TXT</button>
+        <button id="export-md">Markdown</button>
+        <button id="reset" class="danger">Clear</button>
+      </div>
+    </div>
+
+    <details id="diag-box">
+      <summary>Diagnostics</summary>
+      <div id="diag" style="font-size:11px;color:var(--muted);max-height:110px;overflow-y:auto;margin-top:6px;font-family:ui-monospace,monospace;"></div>
     </details>
-    <div id="status">Idle</div>
-    <div id="preview"></div>
-    <script src="sidepanel.js"></script>
+
+    <div style="display: flex; align-items: center; gap: 8px;">
+      <button id="open-options" style="flex:1;border:none;background:transparent;color:var(--muted);font-size:11px;cursor:pointer;padding:2px;text-align:left;">⚙ Settings — transcription source</button>
+      <span id="build" style="font-size:10px;color:var(--muted);opacity:0.7;"></span>
+    </div>
+
+    <script type="module" src="sidepanel.js"></script>
   </body>
 </html>

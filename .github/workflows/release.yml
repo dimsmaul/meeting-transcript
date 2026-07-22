@@ -54,6 +54,10 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
       - uses: jetli/wasm-pack-action@v0.4.0
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Vendor local-Whisper runtime
+        run: scripts/vendor-whisper.sh
 
       - name: Package all targets
         run: scripts/package.sh "${{ needs.version.outputs.version }}" all
@@ -95,7 +99,7 @@ jobs:
             exit 0
           fi
           npx --yes chrome-webstore-upload-cli@3 upload \
-            --source "dist/meet-transcriber-chromium-$VERSION.zip" \
+            --source "dist/speaky-chromium-$VERSION.zip" \
             --extension-id "$APP_ID" \
             --client-id "$CLIENT_ID" \
             --client-secret "$CLIENT_SECRET" \
@@ -120,7 +124,7 @@ jobs:
             echo "::notice::EDGE_PRODUCT_ID is empty — skipping Edge publish."
             exit 0
           fi
-          ZIP="dist/meet-transcriber-chromium-$VERSION.zip"
+          ZIP="dist/speaky-chromium-$VERSION.zip"
           curl -sS -X POST \
             "https://api.addons.microsoftedge.microsoft.com/v1/products/$PRODUCT_ID/submissions/draft/package" \
             -H "Authorization: ApiKey $API_KEY" \

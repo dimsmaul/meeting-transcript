@@ -2,9 +2,20 @@
   "manifest_version": 3,
   "name": "Speaky",
   "version": "0.1.0",
-  "description": "Real-time Google Meet transcription with speaker names via caption scraping. Rust/WASM state engine.",
-  "permissions": ["activeTab", "storage", "tabs", "tabCapture", "offscreen", "sidePanel"],
-  "host_permissions": ["https://meet.google.com/*"],
+  "description": "Record any tab's audio and turn it into a transcript — Meet, Zoom, Teams, YouTube. Rust/WASM engine, local or cloud STT.",
+  "permissions": ["activeTab", "storage", "tabs", "tabCapture", "offscreen", "sidePanel", "downloads"],
+  "host_permissions": [
+    "https://meet.google.com/*",
+    "https://huggingface.co/*",
+    "https://*.hf.co/*",
+    "https://cdn-lfs.huggingface.co/*",
+    "https://cas-bridge.xethub.hf.co/*"
+  ],
+  "optional_host_permissions": ["https://*/*"],
+  "options_ui": {
+    "page": "options/options.html",
+    "open_in_tab": true
+  },
   "icons": {
     "16": "assets/Speaky-16.png",
     "48": "assets/Speaky-48.png",

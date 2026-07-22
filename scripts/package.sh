@@ -1,9 +1,23 @@
 #!/usr/bin/env bash
 # Build WASM + package extension zip per target.
-# Usage: scripts/package.sh <version> [chromium|firefox|all]
-#   version : dotted numeric, e.g. 0.1.0 (from git tag, without the 'v' prefix)
-# Output   : dist/<target>/  and  dist/meet-transcriber-<target>-<version>.zip
+# Usage: scripts/package.sh <version> [chromium|firefox|all] [--no-model]
+#   version    : dotted numeric, e.g. 0.1.0 (from git tag, without the 'v' prefix)
+#   --no-model : omit lib/vendor/models — the extension then downloads the
+#                weights from Hugging Face on first use (needs network, and any
+#                CDN redirect outside manifest host_permissions will fail).
+# Output   : dist/<target>/  and  dist/speaky-<target>-<version>.zip
 set -euo pipefail
+
+ARGS=()
+BUNDLE_MODEL=1
+for a in "$@"; do
+  case "$a" in
+    --no-model) BUNDLE_MODEL=0 ;;
+    *) ARGS+=("$a") ;;
+  esac
+done
+# bash 3.2 (macOS) treats an empty array as unbound under `set -u`.
+set -- ${ARGS[@]+"${ARGS[@]}"}
 
 VERSION="${1:?version required, e.g. 0.1.0}"
 TARGET="${2:-all}"
@@ -11,7 +25,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 # Files/dirs included in every package (besides the generated manifest).
-ASSETS=(pkg background content sidepanel offscreen assets)
+ASSETS=(pkg background content sidepanel offscreen options lib assets)
 
 # manifest.version must be 1–4 dot-separated integers — browsers reject SemVer
 # prerelease strings like "0.2.0-beta.1". Map beta → a numeric 4th component so
@@ -34,6 +48,15 @@ assemble() {
   rm -rf "$out"
   mkdir -p "$out"
   cp -R "${ASSETS[@]}" "$out/"
+  # Ship the vendored weights by default: the runtime download is the single
+  # biggest source of "no transcript" failures (large files, CDN redirects to
+  # hosts outside host_permissions). base is ~40 MB, which packages fine.
+  if [[ "$BUNDLE_MODEL" == "0" ]]; then
+    rm -rf "$out/lib/vendor/models"
+  elif [[ ! -d "$out/lib/vendor/models" ]]; then
+    echo "!! no vendored model — run scripts/vendor-model.sh base (or pass --no-model)" >&2
+    exit 1
+  fi
 
   if [[ "$target" == "firefox" ]]; then
     # Firefox MV3 differences from Chromium:
@@ -63,8 +86,8 @@ assemble() {
     jq --arg v "$MANIFEST_VERSION" '.version = $v' manifest.json > "$out/manifest.json"
   fi
 
-  ( cd "$out" && zip -qr "../meet-transcriber-$target-$VERSION.zip" . )
-  echo "==> dist/meet-transcriber-$target-$VERSION.zip"
+  ( cd "$out" && zip -qr "../speaky-$target-$VERSION.zip" . )
+  echo "==> dist/speaky-$target-$VERSION.zip"
 }
 
 case "$TARGET" in

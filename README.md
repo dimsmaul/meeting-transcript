@@ -29,7 +29,8 @@ The transcript engine is written in **Rust/WebAssembly**; the browser integratio
 - 🔔 **Health warning** — badge turns red if captions stop being detected
 - 🔒 **Local-only** — no uploads, no telemetry, stored in `chrome.storage.local`
 - ⚡ **Rust/WASM core** — dedup of partial caption updates, fast serialization
-- 🧪 **Experimental audio mode** (Phase 3) — tab-audio capture + local STT pipeline (Whisper adapter not yet wired)
+- 🎙️ **Audio recording** — captures the meeting to a downloadable file (tab + mic, cleaned)
+- 🧪 **STT engines** — Meet captions, cloud (your API key), or on-device Whisper (Transformers.js, experimental)
 
 > ⚠️ **Pre-release.** The DOM selectors in `content/content_script.js` are **placeholders** — Google's obfuscated class names change often, so they must be verified against live Meet before Speaky captures anything. Current status and the phase roadmap live in [PRD.md](PRD.md#8-execution-plan).
 

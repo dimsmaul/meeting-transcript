@@ -5,11 +5,14 @@
 // ⚠️ THE SELECTORS BELOW ARE PLACEHOLDERS. Meet's obfuscated classes (.zsA40 etc.)
 // change periodically. They MUST be verified against live Meet during Phase 0.
 // Priority: semantic selectors (role/aria/data-*) first, obfuscated class last.
+// Verified against live Meet (2026-07, locale id). jscontroller is the most
+// stable anchor across locales/versions; classes are fallbacks.
 const SELECTORS = {
-  captionRegion: '[aria-label*="aption"], [jsname][role="region"]',
-  captionRow: ':scope > div',
-  captionSpeaker: '[data-speaker-name], .zs7s8d',
-  captionText: '[jsname="tgaKEf"], .iTTPOb',
+  captionRegion: '[jscontroller="KPn5nb"], div.vNKgIf.UDinHf, .vNKgIf',
+  captionEntry: '.nMcdL',
+  captionText: '.VbkSUe, .ygicle',
+  // Speaker name element — best-effort until confirmed against the entry DOM.
+  captionSpeaker: '.KcIKyf, .zs7s8d, [data-self-name]',
   speakingActive: '[data-is-speaking="true"]',
   speakingName: '[data-self-name], [data-participant-name]',
 };
@@ -25,25 +28,28 @@ let lastCaptionAt = 0;
 let healthTimer = null;
 let reportedStale = false;
 
-// (a) Scraper for Meet's built-in captions.
+// (a) Scraper for Meet's built-in captions. Meet keeps several caption blocks
+// in the DOM and grows the most recent one in place, so we only read the LAST
+// entry each mutation; the Rust engine dedups the growing partial updates.
 const captionObserver = new MutationObserver(() => {
   const region = document.querySelector(SELECTORS.captionRegion);
   if (!region) return;
-  region.querySelectorAll(SELECTORS.captionRow).forEach((row) => {
-    const speaker = row.querySelector(SELECTORS.captionSpeaker)?.textContent?.trim() ?? '';
-    const text = row.querySelector(SELECTORS.captionText)?.textContent?.trim() ?? '';
-    if (!text) return;
-    lastCaptionAt = Date.now();
-    if (reportedStale) {
-      reportedStale = false;
-      chrome.runtime.sendMessage({ type: 'HEALTH', state: 'ok' });
-    }
-    chrome.runtime.sendMessage({
-      type: 'CAPTION_LINE',
-      speaker,
-      text,
-      ts: new Date().toISOString(),
-    });
+  const entries = region.querySelectorAll(SELECTORS.captionEntry);
+  const entry = entries[entries.length - 1] ?? region;
+  const text = entry.querySelector(SELECTORS.captionText)?.textContent?.trim() ?? '';
+  if (!text) return;
+  const speaker = entry.querySelector(SELECTORS.captionSpeaker)?.textContent?.trim() ?? '';
+
+  lastCaptionAt = Date.now();
+  if (reportedStale) {
+    reportedStale = false;
+    chrome.runtime.sendMessage({ type: 'HEALTH', state: 'ok' });
+  }
+  chrome.runtime.sendMessage({
+    type: 'CAPTION_LINE',
+    speaker,
+    text,
+    ts: new Date().toISOString(),
   });
 });
 

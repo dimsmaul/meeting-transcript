@@ -88,13 +88,24 @@ impl TranscriberManager {
 
 const TARGET_RATE: usize = 16_000;
 
+// Voice-activity segmentation, tuned for clean (non-fragmented) transcripts:
+// cut at a silence gap after speech, not on a fixed timer, so each segment is
+// a whole phrase. All in 16 kHz samples.
+const SILENCE_THRESH: f32 = 0.015; // |amplitude| below this = silence
+const SILENCE_FLUSH: usize = 8_000; // 0.5 s of trailing silence ends a segment
+const MIN_SEG: usize = 4_000; // 0.25 s — ignore blips
+const MAX_SEG: usize = 400_000; // 25 s hard cap so a monologue still flushes
+
 #[wasm_bindgen]
 pub struct AudioProcessor {
     input_rate: usize,
     ratio: f64, // input_rate / TARGET_RATE
     pos: f64,   // fractional read position into the running input buffer
     tail: Vec<f32>, // input samples not yet consumed by resampling
-    out: Vec<f32>,  // accumulated 16 kHz samples awaiting a chunk
+    seg: Vec<f32>,  // current segment being built (16 kHz)
+    ready: Vec<Vec<f32>>, // completed phrase-aligned segments
+    silence_run: usize,
+    had_speech: bool,
 }
 
 #[wasm_bindgen]
@@ -107,25 +118,25 @@ impl AudioProcessor {
             ratio: rate as f64 / TARGET_RATE as f64,
             pos: 0.0,
             tail: Vec::new(),
-            out: Vec::new(),
+            seg: Vec::new(),
+            ready: Vec::new(),
+            silence_run: 0,
+            had_speech: false,
         }
     }
 
-    /// Feed a frame of input samples (context-rate, mono). Linearly resamples
-    /// to 16 kHz and appends to the output accumulator.
+    /// Feed a frame of input samples (context-rate, mono). Resamples to 16 kHz
+    /// and runs voice-activity segmentation.
     pub fn push_samples(&mut self, frame: &[f32]) {
         self.tail.extend_from_slice(frame);
-        // Consume as many resampled output samples as the buffer allows,
-        // leaving a small tail for the next call to interpolate across.
         let last_index = self.tail.len() as f64 - 1.0;
         while self.pos + 1.0 <= last_index {
             let i = self.pos.floor() as usize;
             let frac = (self.pos - i as f64) as f32;
             let s = self.tail[i] * (1.0 - frac) + self.tail[i + 1] * frac;
-            self.out.push(s);
+            self.feed(s);
             self.pos += self.ratio;
         }
-        // Drop fully-consumed input, keep the remainder; rebase pos.
         let consumed = self.pos.floor() as usize;
         if consumed > 0 && consumed <= self.tail.len() {
             self.tail.drain(0..consumed);
@@ -133,14 +144,53 @@ impl AudioProcessor {
         }
     }
 
-    pub fn has_chunk(&self, min_samples: usize) -> bool {
-        self.out.len() >= min_samples
+    fn feed(&mut self, s: f32) {
+        self.seg.push(s);
+        if s.abs() < SILENCE_THRESH {
+            self.silence_run += 1;
+        } else {
+            self.silence_run = 0;
+            self.had_speech = true;
+        }
+        let end_by_silence =
+            self.had_speech && self.silence_run >= SILENCE_FLUSH && self.seg.len() >= MIN_SEG;
+        if end_by_silence || self.seg.len() >= MAX_SEG {
+            self.finalize();
+        }
     }
 
-    /// Detach up to `n` accumulated 16 kHz samples for Whisper.
-    pub fn take_chunk(&mut self, n: usize) -> Vec<f32> {
-        let take = n.min(self.out.len());
-        self.out.drain(0..take).collect()
+    fn finalize(&mut self) {
+        if self.had_speech && self.seg.len() >= MIN_SEG {
+            self.ready.push(std::mem::take(&mut self.seg));
+        } else {
+            self.seg.clear();
+        }
+        self.silence_run = 0;
+        self.had_speech = false;
+    }
+
+    /// Force the in-progress segment out (call on stop).
+    pub fn flush(&mut self) {
+        self.finalize();
+    }
+
+    pub fn has_segment(&self) -> bool {
+        !self.ready.is_empty()
+    }
+
+    /// Completed segments waiting to be consumed. Used to bound memory while an
+    /// STT engine is still loading.
+    pub fn segment_count(&self) -> usize {
+        self.ready.len()
+    }
+
+    /// Pop the oldest completed phrase segment (empty if none).
+    pub fn take_segment(&mut self) -> Vec<f32> {
+        if self.ready.is_empty() {
+            Vec::new()
+        } else {
+            self.ready.remove(0)
+        }
     }
 
     pub fn input_rate(&self) -> usize {
@@ -232,28 +282,36 @@ mod tests {
 
     #[test]
     fn resampler_halves_rate_roughly() {
-        // 32 kHz → 16 kHz should output ~half the samples.
+        // 32 kHz → 16 kHz should output ~half the samples. Loud signal (never
+        // silent) → one segment on flush.
         let mut p = AudioProcessor::new(32_000);
-        let frame: Vec<f32> = (0..3200).map(|i| (i as f32).sin()).collect();
+        let frame: Vec<f32> = (0..20_000).map(|i| ((i as f32) * 0.1).sin()).collect();
         p.push_samples(&frame);
-        let out = p.take_chunk(100_000);
-        // ratio = 2.0 → ~1600 out for 3200 in (±a few for tail handling).
-        assert!(
-            (out.len() as i32 - 1600).abs() < 10,
-            "got {} samples",
-            out.len()
-        );
+        p.flush();
+        assert!(p.has_segment());
+        let seg = p.take_segment();
+        // ratio 2.0 → ~10 000 out for 20 000 in.
+        assert!((seg.len() as i32 - 10_000).abs() < 20, "got {} samples", seg.len());
     }
 
     #[test]
-    fn chunker_thresholds() {
-        let mut p = AudioProcessor::new(16_000); // ratio 1.0, passthrough
-        p.push_samples(&vec![0.5; 500]);
-        assert!(!p.has_chunk(1000));
-        p.push_samples(&vec![0.5; 600]);
-        assert!(p.has_chunk(1000));
-        let c = p.take_chunk(1000);
-        assert_eq!(c.len(), 1000);
+    fn segments_split_on_silence() {
+        let mut p = AudioProcessor::new(16_000); // passthrough
+        // Speech, then >0.5 s of silence → one finalized segment.
+        p.push_samples(&vec![0.5; 6000]);
+        p.push_samples(&vec![0.0; SILENCE_FLUSH + 100]);
+        assert!(p.has_segment(), "silence gap should finalize a segment");
+        let seg = p.take_segment();
+        assert!(seg.len() >= 6000);
+        assert!(!p.has_segment(), "only one segment expected");
+    }
+
+    #[test]
+    fn silence_only_yields_nothing() {
+        let mut p = AudioProcessor::new(16_000);
+        p.push_samples(&vec![0.0; 20_000]);
+        p.flush();
+        assert!(!p.has_segment());
     }
 
     #[test]
